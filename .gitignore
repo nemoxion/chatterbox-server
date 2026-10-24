@@ -46,3 +46,14 @@ checkpoints/
 
 # Ignore generated sample .wav files
 **/*.wav
+
+# Local server runtime and private samples
+.venv/
+/models/
+/voices/
+/.downloads/
+/runtime/
+*.log
+*.pid
+.env
+.env.*
