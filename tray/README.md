@@ -2,7 +2,7 @@
 
 A small native Windows application written in Rust. Launch **Chatterbox Server** from the Start menu; it starts the Python server without opening a console and places a waveform icon in the system tray (possibly under the hidden-icons arrow).
 
-Double-click the icon to open Chatterbox. Right-click for server status, the web interface, API documentation, Start/Stop server, logs, and Quit. Quit stops a server launched by this application. If a server was already running elsewhere, the app leaves that process alone and disables Stop for it.
+Double-click the icon to open Chatterbox. Right-click for server status, the web interface, API documentation, Start/Stop server, Unload model, automatic-unload timeout presets, logs, and Quit. Quit stops a server launched by this application. If a server was already running elsewhere, the app leaves that process alone and disables Stop for it.
 
 The wrapper manages the server process tree with a Windows Job Object. Closing its process also releases the managed Python processes and CUDA context. A named mutex prevents duplicate tray instances. Explorer restarts are handled by re-registering the tray icon. Tailscale Serve remains independently configured.
 
@@ -40,3 +40,9 @@ cargo clippy --locked -- -D warnings
 The executable also supports `--start-server`, `--stop-server`, and `--quit` to send a command to an already running tray instance. Start/Stop only affects the managed server. A raw build requires `config.json` and `app.ico` alongside the executable; normally the installer provides these.
 
 This wrapper is currently Windows-only. Speech inference remains in Python/PyTorch.
+
+## Model memory
+
+**Unload model (keep server running)** releases model weights without stopping the API; the next speech request loads them again. The **Auto-unload idle model** submenu offers Disabled, 30 minutes, 1 hour, 2 hours (default), 4 hours, and 8 hours. The active preset is checked. For any other duration, choose Custom timeout and expand Model memory in the web interface. Settings persist on the server across app restarts in `data/settings.json`; active speech is never interrupted. These commands also work with an independently started server.
+
+Command-line controls also include `--unload-model` and `--timeout-disabled`, `--timeout-30m`, `--timeout-1h`, `--timeout-2h`, `--timeout-4h`, `--timeout-8h`.

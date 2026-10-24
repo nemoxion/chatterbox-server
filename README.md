@@ -35,6 +35,7 @@ OpenAPI: http://127.0.0.1:7860/openapi.json
 | GET | `/model/status` | State and PyTorch GPU allocation metrics |
 | POST | `/model/load` | Load Multilingual V3 onto the GPU |
 | POST | `/model/unload` | Release model weights and audio caches |
+| GET / PUT | `/model/settings` | Read/save `idle_timeout_seconds` (default 7200; 0 disables; maximum 30 days) |
 | POST | `/v1/audio/speech` | Generate WAV audio from JSON |
 | POST | `/voices` | Upload multipart fields `name` and `sample` |
 | GET | `/voices` | List persistent voice IDs and metadata |
@@ -42,7 +43,7 @@ OpenAPI: http://127.0.0.1:7860/openapi.json
 | GET | `/voices/{id}/sample` | Download its WAV reference |
 | DELETE | `/voices/{id}` | Delete the stored WAV and metadata (204; unknown IDs return 404) |
 
-Speech automatically loads the model when needed. Load, unload, and generation operations share a lock, so unloading waits for active generation. No idle timeout is configured. A small CUDA runtime allocation/context can remain after unloading; approximately 8 MB of PyTorch allocations remained in testing. Metrics report PyTorch allocations rather than all process VRAM.
+Speech automatically loads the model when needed. Load, unload, and generation operations share a lock, so unloading waits for active generation. The model automatically unloads after two hours of inactivity by default. Configure `/model/settings`, the tray timeout presets, or Model memory in the web interface; zero disables automatic unloading. Settings persist in ignored `data/settings.json`. The timer resets after generation finishes or an explicit load request, and status polling does not reset it. Active generation is never interrupted. A small CUDA runtime allocation/context can remain after unloading; approximately 8 MB of PyTorch allocations remained in testing. Metrics report PyTorch allocations rather than all process VRAM.
 
 Speech JSON accepts `input` (alias `text`, 1–3000 characters), `language` (default `en`), `voice` (optional stored ID), `exaggeration` (0–2, default 0.5), `cfg_weight` (0–1, default 0.5), and `response_format` (`wav` only). This is a local speech endpoint, not a complete implementation of the OpenAI API.
 
@@ -91,3 +92,5 @@ Run a REST integration check against a running instance:
 ```
 
 It checks model loading, speech generation, storing/retrieving a synthetic demo voice, generation with that voice, and unloading. It leaves one synthetic test sample in the private voice store and finishes with the model unloaded. Pass `--base-url` to test the Tailscale URL.
+
+Idle timeout verification: `.\.venv\Scripts\python.exe scripts/verify_idle_timeout.py`. This briefly changes the timeout to test real GPU generation and idle expiration, then restores the previous setting and unloads the model.

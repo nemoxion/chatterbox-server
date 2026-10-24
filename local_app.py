@@ -5,6 +5,8 @@ import json
 import re
 import threading
 import uuid
+import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,18 +32,63 @@ default_conds = None
 state = 'unloaded'
 lock = threading.Lock()
 voice_lock = threading.Lock()
+SETTINGS_FILE = DATA / 'settings.json'
+idle_timeout_seconds = 7200
+if SETTINGS_FILE.exists():
+    idle_timeout_seconds = json.loads(SETTINGS_FILE.read_text(encoding='utf-8'))['idle_timeout_seconds']
+    if type(idle_timeout_seconds) is not int or not 0 <= idle_timeout_seconds <= 2592000:
+        raise ValueError('Invalid idle timeout in data/settings.json')
+last_used = None
+
+def unload_locked():
+    global model, default_conds, state, last_used
+    state = 'unloading'
+    model = None
+    default_conds = None
+    get_resampler.cache_clear()
+    mel_utils.mel_basis.clear()
+    mel_utils.hann_window.clear()
+    _mel_filters.cache_clear()
+    torch.backends.cuda.cufft_plan_cache.clear()
+    gc.collect()
+    torch.cuda.empty_cache()
+    last_used = None
+    state = 'unloaded'
+
+def idle_watch(stop):
+    while not stop.wait(1):
+        if not lock.acquire(blocking=False):
+            continue
+        try:
+            if model is not None and idle_timeout_seconds and last_used is not None and time.monotonic() - last_used >= idle_timeout_seconds:
+                unload_locked()
+        finally:
+            lock.release()
+
+@asynccontextmanager
+async def lifespan(app):
+    stop = threading.Event()
+    worker = threading.Thread(target=idle_watch, args=(stop,), daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        worker.join(timeout=2)
 
 def status():
     return {
         'model': 'chatterbox-multilingual-v3', 'state': state,
         'loaded': model is not None, 'device': 'cuda',
+        'idle_timeout_seconds': idle_timeout_seconds,
+        'idle_seconds': round(time.monotonic() - last_used, 1) if last_used is not None else None,
         'gpu': torch.cuda.get_device_name(0),
         'gpu_allocated_mb': round(torch.cuda.memory_allocated() / 1024**2, 1),
         'gpu_reserved_mb': round(torch.cuda.memory_reserved() / 1024**2, 1),
     }
 
 def load_locked():
-    global model, default_conds, state
+    global model, default_conds, state, last_used
     if model is None:
         state = 'loading'
         try:
@@ -49,6 +96,7 @@ def load_locked():
             default_conds = model.conds
         finally:
             state = 'loaded' if model is not None else 'unloaded'
+    last_used = time.monotonic()
 
 def voice_metadata(voice_id):
     if not re.fullmatch(r'[0-9a-f]{32}', voice_id):
@@ -97,6 +145,7 @@ def save_voice(name, data):
     return metadata
 
 def synthesize(text, language='en', reference=None, voice=None, exaggeration=0.5, cfg_weight=0.5):
+    global last_used
     if not text.strip() or len(text) > 3000:
         raise HTTPException(422, 'Text must contain 1 to 3000 characters')
     if language not in SUPPORTED_LANGUAGES:
@@ -115,8 +164,32 @@ def synthesize(text, language='en', reference=None, voice=None, exaggeration=0.5
             return model.sr, wav.squeeze(0).cpu().numpy()
         finally:
             model.conds = default_conds
+            last_used = time.monotonic()
 
-api = FastAPI(title='Chatterbox REST API', version='1.0.0')
+api = FastAPI(title='Chatterbox REST API', version='1.0.0', lifespan=lifespan)
+
+class ModelSettings(BaseModel):
+    idle_timeout_seconds: int = Field(default=7200, ge=0, le=2592000, strict=True)
+
+@api.get('/model/settings')
+def model_settings():
+    return {'idle_timeout_seconds': idle_timeout_seconds}
+
+@api.put('/model/settings')
+def update_model_settings(settings: ModelSettings):
+    global idle_timeout_seconds
+    with lock:
+        temporary = SETTINGS_FILE.with_suffix('.tmp')
+        temporary.write_text(json.dumps(settings.model_dump()), encoding='utf-8')
+        temporary.replace(SETTINGS_FILE)
+        idle_timeout_seconds = settings.idle_timeout_seconds
+        return model_settings()
+
+def ui_timeout(minutes):
+    seconds = minutes * 60
+    if not 0 <= seconds <= 2592000 or seconds != int(seconds):
+        raise gr.Error('Enter minutes between 0 and 43200 (0 disables automatic unloading)')
+    return update_model_settings(ModelSettings(idle_timeout_seconds=int(seconds)))
 
 class SpeechRequest(BaseModel):
     input: str = Field(validation_alias=AliasChoices('input', 'text'), min_length=1, max_length=3000)
@@ -138,19 +211,8 @@ def model_load():
 
 @api.post('/model/unload')
 def model_unload():
-    global model, default_conds, state
     with lock:
-        state = 'unloading'
-        model = None
-        default_conds = None
-        get_resampler.cache_clear()
-        mel_utils.mel_basis.clear()
-        mel_utils.hann_window.clear()
-        _mel_filters.cache_clear()
-        torch.backends.cuda.cufft_plan_cache.clear()
-        gc.collect()
-        torch.cuda.empty_cache()
-        state = 'unloaded'
+        unload_locked()
         return status()
 
 @api.get('/voices')
@@ -240,6 +302,9 @@ with gr.Blocks(title='Chatterbox TTS') as ui:
     generate_button.click(ui_generate, [text, language, reference, voice], audio, api_name='synthesize', concurrency_limit=1)
     with gr.Accordion('Model memory', open=False):
         model_info = gr.JSON(label='Model status')
+        timeout = gr.Number(value=idle_timeout_seconds / 60, label='Auto-unload after idle minutes (0 disables)', minimum=0, maximum=43200)
+        gr.Button('Save idle timeout').click(ui_timeout, timeout, model_info, api_name=False)
+        ui.load(lambda: idle_timeout_seconds / 60, outputs=timeout, api_name=False)
         gr.Button('Status').click(model_status, outputs=model_info, api_name=False)
         gr.Button('Load model').click(model_load, outputs=model_info, api_name=False)
         gr.Button('Unload model').click(model_unload, outputs=model_info, api_name=False)

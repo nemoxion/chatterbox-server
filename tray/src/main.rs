@@ -27,6 +27,53 @@ const START: u32 = 3;
 const STOP: u32 = 4;
 const LOGS: u32 = 5;
 const EXIT: u32 = 6;
+const UNLOAD: u32 = 7;
+const CUSTOM_TIMEOUT: u32 = 8;
+const TIMEOUTS: [u64; 6] = [0, 1800, 3600, 7200, 14400, 28800];
+
+fn server_request(method: &str, path: &str, body: &str) -> Result<serde_json::Value, String> {
+    let mut stream = TcpStream::connect_timeout(
+        &"127.0.0.1:7860".parse::<SocketAddr>().unwrap(),
+        Duration::from_secs(2),
+    )
+    .map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(if method == "GET" {
+            2
+        } else {
+            180
+        })))
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .map_err(|e| e.to_string())?;
+    let request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let mut response = String::new();
+    stream
+        .take(65536)
+        .read_to_string(&mut response)
+        .map_err(|e| e.to_string())?;
+    let (headers, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("Invalid server response")?;
+    if !headers.starts_with("HTTP/1.1 200") {
+        return Err(format!("Server request failed: {body}"));
+    }
+    serde_json::from_str(body).map_err(|e| e.to_string())
+}
+
+fn background_request(method: &'static str, path: &'static str, body: String) {
+    std::thread::spawn(move || {
+        if let Err(error) = server_request(method, path, &body) {
+            unsafe {
+                message(&error);
+            }
+        }
+    });
+}
 
 #[derive(Deserialize)]
 struct Config {
@@ -184,6 +231,7 @@ impl App {
             (DOCS, "Open API documentation", true),
             (START, "Start server", !owned && !running),
             (STOP, "Stop server", owned),
+            (UNLOAD, "Unload model (keep server running)", running),
             (LOGS, "Open logs folder", true),
             (EXIT, "Quit Chatterbox (stops managed server)", true),
         ] {
@@ -194,6 +242,47 @@ impl App {
                 wide(text).as_ptr(),
             );
         }
+        let timeout_menu = CreatePopupMenu();
+        let current = if running {
+            server_request("GET", "/model/settings", "")
+                .ok()
+                .and_then(|v| v["idle_timeout_seconds"].as_u64())
+        } else {
+            None
+        };
+        for (index, (seconds, label)) in TIMEOUTS
+            .iter()
+            .zip([
+                "Disabled",
+                "30 minutes",
+                "1 hour",
+                "2 hours (default)",
+                "4 hours",
+                "8 hours",
+            ])
+            .enumerate()
+        {
+            let flags = MF_STRING
+                | if current == Some(*seconds) {
+                    MF_CHECKED
+                } else {
+                    0
+                }
+                | if running { 0 } else { MF_GRAYED };
+            AppendMenuW(timeout_menu, flags, 100 + index, wide(label).as_ptr());
+        }
+        AppendMenuW(
+            timeout_menu,
+            MF_STRING,
+            CUSTOM_TIMEOUT as usize,
+            wide("Custom timeout (web interface)").as_ptr(),
+        );
+        AppendMenuW(
+            menu,
+            MF_POPUP,
+            timeout_menu as usize,
+            wide("Auto-unload idle model").as_ptr(),
+        );
         let mut point: POINT = zeroed();
         GetCursorPos(&mut point);
         SetForegroundWindow(window);
@@ -221,6 +310,16 @@ impl App {
                 }
             }
             STOP => self.stop(),
+            UNLOAD => background_request("POST", "/model/unload", String::new()),
+            CUSTOM_TIMEOUT => open("http://127.0.0.1:7860/"),
+            id @ 100..=105 => {
+                let seconds = TIMEOUTS[(id - 100) as usize];
+                background_request(
+                    "PUT",
+                    "/model/settings",
+                    format!("{{\"idle_timeout_seconds\":{seconds}}}"),
+                );
+            }
             LOGS => open(self.config.repository.join("runtime")),
             EXIT => {
                 PostMessageW(window, WM_CLOSE, 0, 0);
@@ -303,6 +402,13 @@ fn run() -> Result<(), String> {
             "--start-server" => START,
             "--stop-server" => STOP,
             "--quit" => EXIT,
+            "--unload-model" => UNLOAD,
+            "--timeout-disabled" => 100,
+            "--timeout-30m" => 101,
+            "--timeout-1h" => 102,
+            "--timeout-2h" => 103,
+            "--timeout-4h" => 104,
+            "--timeout-8h" => 105,
             _ => return Err("Supported commands: --start-server, --stop-server, --quit".into()),
         };
         unsafe {
