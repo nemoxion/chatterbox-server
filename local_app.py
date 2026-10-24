@@ -224,6 +224,8 @@ with gr.Blocks(title='Chatterbox TTS') as ui:
     text = gr.Textbox(label='Text', lines=5, value='Hello! Chatterbox is running locally on this computer.')
     language = gr.Dropdown(choices=[(name, code) for code, name in SUPPORTED_LANGUAGES.items()], value='en', label='Language')
     voice = gr.Dropdown(choices=voice_choices(), value='', label='Stored voice (takes priority over uploaded reference)')
+    voice_id = gr.Textbox(value='', label='Voice ID', interactive=False, buttons=['copy'])
+    voice.change(lambda selected: selected or '', voice, voice_id, api_name=False, queue=False)
     refresh = gr.Button('Refresh stored voices')
     delete = gr.Button('Delete selected stored voice', variant='stop')
     delete.click(ui_delete_voice, voice, voice, api_name=False)
