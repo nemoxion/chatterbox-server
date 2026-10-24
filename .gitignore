@@ -54,6 +54,7 @@ checkpoints/
 /voices/
 /.downloads/
 /runtime/
+/tray/target/
 *.log
 *.pid
 .env

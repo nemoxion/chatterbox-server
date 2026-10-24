@@ -24,6 +24,8 @@ The Python environment, downloaded models, voice recordings, logs, and other run
 
 ## Browser and REST API
 
+For a Windows system-tray application with Start-menu installation and server controls, see [tray/README.md](tray/README.md). It manages the existing Python server; inference stays in PyTorch.
+
 Browser: http://127.0.0.1:7860/
 Interactive API docs: http://127.0.0.1:7860/docs
 OpenAPI: http://127.0.0.1:7860/openapi.json
