@@ -23,6 +23,16 @@ def verify(base):
     speech = call('POST', '/v1/audio/speech', json={'input': 'Hello. This is a local REST interface test.'})
     audio, sr = sf.read(io.BytesIO(speech.content))
     assert len(audio) > sr and np.isfinite(audio).all() and np.max(np.abs(audio)) > 0.001
+    temporary = call('POST', '/voices', expected=201, data={'name': 'Temporary deletion check'},
+                     files={'sample': ('test.wav', speech.content, 'audio/wav')}).json()
+    temporary_id = temporary['id']
+    call('GET', f'/voices/{temporary_id}/sample')
+    assert not call('DELETE', f'/voices/{temporary_id}', expected=204).content
+    for path in [f'/voices/{temporary_id}', f'/voices/{temporary_id}/sample']:
+        call('GET', path, expected=404)
+    call('DELETE', f'/voices/{temporary_id}', expected=404)
+    call('DELETE', '/voices/invalid-id', expected=404)
+    assert all(v['id'] != temporary_id for v in call('GET', '/voices').json()['voices'])
     voices = call('GET', '/voices').json()['voices']
     voice = next((v for v in voices if v['name'] == 'Demo - synthetic test voice'), None)
     if voice is None:

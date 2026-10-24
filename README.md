@@ -38,6 +38,7 @@ OpenAPI: http://127.0.0.1:7860/openapi.json
 | GET | `/voices` | List persistent voice IDs and metadata |
 | GET | `/voices/{id}` | Retrieve a voice's metadata |
 | GET | `/voices/{id}/sample` | Download its WAV reference |
+| DELETE | `/voices/{id}` | Delete the stored WAV and metadata (204; unknown IDs return 404) |
 
 Speech automatically loads the model when needed. Load, unload, and generation operations share a lock, so unloading waits for active generation. No idle timeout is configured. A small CUDA runtime allocation/context can remain after unloading; approximately 8 MB of PyTorch allocations remained in testing. Metrics report PyTorch allocations rather than all process VRAM.
 
@@ -64,6 +65,8 @@ with open('speech.wav', 'wb') as output:
     output.write(response.content)
 requests.post(base + '/model/unload', timeout=180).raise_for_status()
 ```
+
+To remove a saved voice in the browser, select it and click **Delete selected stored voice**. Deletion removes its WAV and metadata, resets the selection, and waits for active speech generation to finish. Built-in voices cannot be deleted. API clients can use `DELETE /voices/{id}`; subsequent retrieval or generation with that ID returns 404.
 
 ## Tailscale
 

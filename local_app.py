@@ -14,7 +14,7 @@ import soundfile as sf
 import torch
 import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from pydantic import AliasChoices, BaseModel, Field
 from chatterbox.mtl_tts import ChatterboxMultilingualTTS, SUPPORTED_LANGUAGES
 from chatterbox.models.s3gen.s3gen import get_resampler
@@ -61,6 +61,13 @@ def list_voices():
     with voice_lock:
         return sorted([json.loads(p.read_text(encoding='utf-8')) for p in VOICES.glob('*.json')], key=lambda v: v['created_at'])
 
+def delete_voice(voice_id):
+    # Wait until generation has finished reading the selected sample.
+    with lock, voice_lock:
+        voice_metadata(voice_id)
+        (VOICES / f'{voice_id}.wav').unlink(missing_ok=True)
+        (VOICES / f'{voice_id}.json').unlink()
+
 def save_voice(name, data):
     name = name.strip()
     if not name or len(name) > 100:
@@ -93,10 +100,10 @@ def synthesize(text, language='en', reference=None, voice=None, exaggeration=0.5
         raise HTTPException(422, 'Text must contain 1 to 3000 characters')
     if language not in SUPPORTED_LANGUAGES:
         raise HTTPException(422, 'Unsupported language')
-    if voice:
-        voice_metadata(voice)
-        reference = str(VOICES / f'{voice}.wav')
     with lock:
+        if voice:
+            voice_metadata(voice)
+            reference = str(VOICES / f'{voice}.wav')
         load_locked()
         # References must not leak into subsequent default-voice calls.
         model.conds = default_conds
@@ -158,12 +165,20 @@ def voices_add(name: str = Form(...), sample: UploadFile = File(...)):
 
 @api.get('/voices/{voice_id}')
 def voices_get(voice_id: str):
-    return voice_metadata(voice_id)
+    with voice_lock:
+        return voice_metadata(voice_id)
+
+@api.delete('/voices/{voice_id}', status_code=204)
+def voices_delete(voice_id: str):
+    delete_voice(voice_id)
+    return Response(status_code=204)
 
 @api.get('/voices/{voice_id}/sample')
 def voices_sample(voice_id: str):
-    voice_metadata(voice_id)
-    return FileResponse(VOICES / f'{voice_id}.wav', media_type='audio/wav', filename=f'{voice_id}.wav')
+    with voice_lock:
+        voice_metadata(voice_id)
+        data = (VOICES / f'{voice_id}.wav').read_bytes()
+    return Response(data, media_type='audio/wav', headers={'Content-Disposition': f'attachment; filename="{voice_id}.wav"'})
 
 @api.post('/v1/audio/speech', responses={200: {'content': {'audio/wav': {}}}})
 def speech(request: SpeechRequest):
@@ -194,12 +209,24 @@ def ui_save_voice(name, reference):
         raise gr.Error(exc.detail) from exc
     return gr.Dropdown(choices=voice_choices(), value=saved['id'])
 
+def ui_delete_voice(voice_id):
+    if not voice_id:
+        raise gr.Error('Select a stored voice to delete')
+    try:
+        delete_voice(voice_id)
+    except HTTPException as exc:
+        raise gr.Error(exc.detail) from exc
+    gr.Info('Stored voice deleted')
+    return gr.Dropdown(choices=voice_choices(), value='')
+
 with gr.Blocks(title='Chatterbox TTS') as ui:
     gr.Markdown('# Chatterbox TTS\nGenerate speech locally. [REST API documentation](/docs)')
     text = gr.Textbox(label='Text', lines=5, value='Hello! Chatterbox is running locally on this computer.')
     language = gr.Dropdown(choices=[(name, code) for code, name in SUPPORTED_LANGUAGES.items()], value='en', label='Language')
     voice = gr.Dropdown(choices=voice_choices(), value='', label='Stored voice (takes priority over uploaded reference)')
     refresh = gr.Button('Refresh stored voices')
+    delete = gr.Button('Delete selected stored voice', variant='stop')
+    delete.click(ui_delete_voice, voice, voice, api_name=False)
     reference = gr.Audio(sources=['upload', 'microphone'], type='filepath', label='Voice reference (optional)')
     name = gr.Textbox(label='Name for saved voice')
     save = gr.Button('Save reference as stored voice')
