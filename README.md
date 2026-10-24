@@ -69,7 +69,7 @@ with open('speech.wav', 'wb') as output:
 requests.post(base + '/model/unload', timeout=180).raise_for_status()
 ```
 
-To remove a saved voice in the browser, select it and click **Delete selected stored voice**. Deletion removes its WAV and metadata, resets the selection, and waits for active speech generation to finish. Built-in voices cannot be deleted. API clients can use `DELETE /voices/{id}`; subsequent retrieval or generation with that ID returns 404.
+To remove a saved voice in the browser, select it, click **Delete selected stored voice**, review the displayed name and ID, and click **Confirm deletion**. Cancel or select a different voice to dismiss the confirmation without deleting. Deletion removes its WAV and metadata, resets the selection, and waits for active speech generation to finish. Built-in voices cannot be deleted. API clients can use `DELETE /voices/{id}`; subsequent retrieval or generation with that ID returns 404.
 
 ## Tailscale
 

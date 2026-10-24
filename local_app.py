@@ -282,16 +282,37 @@ def ui_delete_voice(voice_id):
     gr.Info('Stored voice deleted')
     return gr.Dropdown(choices=voice_choices(), value='')
 
+def ui_request_delete(voice_id):
+    if not voice_id:
+        raise gr.Error('Select a stored voice to delete')
+    try:
+        metadata = voice_metadata(voice_id)
+    except HTTPException as exc:
+        raise gr.Error(exc.detail) from exc
+    return gr.Group(visible=True), f"{metadata['name']} ({voice_id})", voice_id
+
+def ui_confirm_delete(pending_id):
+    selection = ui_delete_voice(pending_id)
+    return selection, gr.Group(visible=False), None
+
 with gr.Blocks(title='Chatterbox TTS') as ui:
     gr.Markdown('# Chatterbox TTS\nGenerate speech locally. [REST API documentation](/docs)')
     text = gr.Textbox(label='Text', lines=5, value='Hello! Chatterbox is running locally on this computer.')
     language = gr.Dropdown(choices=[(name, code) for code, name in SUPPORTED_LANGUAGES.items()], value='en', label='Language')
     voice = gr.Dropdown(choices=voice_choices(), value='', label='Stored voice (takes priority over uploaded reference)')
     voice_id = gr.Textbox(value='', label='Voice ID', interactive=False, buttons=['copy'])
-    voice.change(lambda selected: selected or '', voice, voice_id, api_name=False, queue=False)
     refresh = gr.Button('Refresh stored voices')
     delete = gr.Button('Delete selected stored voice', variant='stop')
-    delete.click(ui_delete_voice, voice, voice, api_name=False)
+    pending_delete = gr.State(None)
+    with gr.Group(visible=False) as confirmation:
+        gr.Markdown('Permanently delete this stored voice and its audio sample?')
+        deletion_target = gr.Textbox(label='Voice to delete', interactive=False)
+        confirm_delete = gr.Button('Confirm deletion', variant='stop')
+        cancel_delete = gr.Button('Cancel')
+    delete.click(ui_request_delete, voice, [confirmation, deletion_target, pending_delete], api_name=False)
+    confirm_delete.click(ui_confirm_delete, pending_delete, [voice, confirmation, pending_delete], api_name=False)
+    cancel_delete.click(lambda: (gr.Group(visible=False), None), outputs=[confirmation, pending_delete], api_name=False, queue=False)
+    voice.change(lambda selected: (selected or '', gr.Group(visible=False), None), voice, [voice_id, confirmation, pending_delete], api_name=False, queue=False)
     reference = gr.Audio(sources=['upload', 'microphone'], type='filepath', label='Voice reference (optional)')
     name = gr.Textbox(label='Name for saved voice')
     save = gr.Button('Save reference as stored voice')
