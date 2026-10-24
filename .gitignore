@@ -48,6 +48,7 @@ checkpoints/
 **/*.wav
 
 # Local server runtime and private samples
+/data/
 .venv/
 /models/
 /voices/

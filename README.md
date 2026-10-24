@@ -14,13 +14,13 @@ Set-Location D:\Git\Projects\chatterbox-server
 .\Start.ps1
 ```
 
-Pass your own Python 3.11 executable if different. Setup creates `.venv`, installs the pinned Windows/CUDA dependencies, installs this source in editable mode, and downloads the multilingual model. Large artifacts use chunked downloads with SHA256 verification against `scripts/artifacts.json`. Already verified files are reused. `-SkipModels` installs just the environment; download models later with:
+Pass your own Python 3.11 executable if different. Setup creates `.venv`, installs the pinned Windows/CUDA dependencies, installs this source in editable mode, and downloads the multilingual model. Large artifacts use chunked downloads with SHA256 verification against `scripts/artifacts.json`. Already verified files are reused. `-SkipModels` installs just the environment; download models into `data/models` later with:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/download_artifacts.py --group models
 ```
 
-The Python environment, downloaded models, voice recordings, logs, and other runtime files are excluded from Git. No private voice sample is included. This repository is a reproducible source copy; the currently running installation remains in its original Codex workspace. Stop that server before running this copy on the same port. To preserve its stored voices during migration, copy its entire `voices` directory into this repository locally, including JSON metadata and WAV files. Do not commit it.
+The Python environment, downloaded models, voice recordings, logs, and other runtime files are excluded from Git. No private voice sample is included. This repository is a reproducible source copy; the server source and runtime data now live in this repository. Models are stored in `data/models` and saved recordings plus metadata in `data/voices`. The entire `data` folder is ignored by Git. The existing Python environment remains in the original Codex workspace; the original launcher reuses it to run this repository's source. Run `Setup.ps1` to create an independent environment here.
 
 ## Browser and REST API
 

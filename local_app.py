@@ -22,8 +22,9 @@ from chatterbox.models.s3gen.utils import mel as mel_utils
 from s3tokenizer.utils import _mel_filters
 
 ROOT = Path(__file__).resolve().parent
-VOICES = ROOT / 'voices'
-VOICES.mkdir(exist_ok=True)
+DATA = ROOT / 'data'
+VOICES = DATA / 'voices'
+VOICES.mkdir(parents=True, exist_ok=True)
 model = None
 default_conds = None
 state = 'unloaded'
@@ -44,7 +45,7 @@ def load_locked():
     if model is None:
         state = 'loading'
         try:
-            model = ChatterboxMultilingualTTS.from_local(ROOT / 'models', device='cuda', t3_model='v3')
+            model = ChatterboxMultilingualTTS.from_local(DATA / 'models', device='cuda', t3_model='v3')
             default_conds = model.conds
         finally:
             state = 'loaded' if model is not None else 'unloaded'
