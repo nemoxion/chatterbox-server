@@ -59,10 +59,11 @@ def download(item, workers=8):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--group', choices=['cuda', 'models', 'all'], default='all')
+    parser.add_argument('--group', choices=['cuda', 'models', 'alignment', 'all'], default='all')
     parser.add_argument('--workers', type=int, choices=range(1, 33), default=8)
     args = parser.parse_args()
     manifest = json.loads((ROOT / 'scripts/artifacts.json').read_text())
+    manifest += json.loads((ROOT / 'scripts/alignment-artifacts.json').read_text())
     for artifact in manifest:
         if args.group in ('all', artifact['group']):
             download(artifact, args.workers)

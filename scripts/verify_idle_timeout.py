@@ -22,7 +22,7 @@ if __name__ == '__main__':
         configure(2)
         request('POST', '/model/load')
         # Generation lasts longer than the timeout but must still finish normally.
-        audio = request('POST', '/v1/audio/speech', json={'input': 'This request must finish before the idle timer starts counting down.'})
+        audio = request('POST', '/v1/audio/speech', json={'input': 'This request must finish before the idle timer starts counting down.', 'response_format': 'wav'})
         wav, sr = sf.read(io.BytesIO(audio.content))
         assert len(wav) > sr
         assert request('GET', '/model/status').json()['loaded']

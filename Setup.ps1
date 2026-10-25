@@ -1,6 +1,7 @@
 param(
     [string]$Python = 'python',
-    [switch]$SkipModels
+    [switch]$SkipModels,
+    [switch]$Alignment
 )
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
@@ -30,5 +31,9 @@ if ($LASTEXITCODE -ne 0) { throw 'CUDA verification failed' }
 if (-not $SkipModels) {
     & $envPython scripts/download_artifacts.py --group models
     if ($LASTEXITCODE -ne 0) { throw 'Model download failed' }
+}
+if ($Alignment) {
+    & $envPython scripts/download_artifacts.py --group alignment
+    if ($LASTEXITCODE -ne 0) { throw 'Alignment model download failed' }
 }
 Write-Output 'Setup complete. Run .\Start.ps1 to start the server.'

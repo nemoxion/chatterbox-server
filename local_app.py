@@ -6,6 +6,7 @@ import re
 import threading
 import uuid
 import time
+import base64
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,9 +16,11 @@ import numpy as np
 import soundfile as sf
 import torch
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
-from pydantic import AliasChoices, BaseModel, Field
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
+from fastapi.responses import Response, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict
+from speech_tools import FORMATS, adjust_speed, encode_audio, decoded_audio, check_alignment, align_words
 from chatterbox.mtl_tts import ChatterboxMultilingualTTS, SUPPORTED_LANGUAGES
 from chatterbox.models.s3gen.s3gen import get_resampler
 from chatterbox.models.s3gen.utils import mel as mel_utils
@@ -146,8 +149,8 @@ def save_voice(name, data):
 
 def synthesize(text, language='en', reference=None, voice=None, exaggeration=0.5, cfg_weight=0.5):
     global last_used
-    if not text.strip() or len(text) > 3000:
-        raise HTTPException(422, 'Text must contain 1 to 3000 characters')
+    if not text.strip() or len(text) > 4096:
+        raise HTTPException(422, 'Text must contain 1 to 4096 characters')
     if language not in SUPPORTED_LANGUAGES:
         raise HTTPException(422, 'Unsupported language')
     with lock:
@@ -192,12 +195,45 @@ def ui_timeout(minutes):
     return update_model_settings(ModelSettings(idle_timeout_seconds=int(seconds)))
 
 class SpeechRequest(BaseModel):
-    input: str = Field(validation_alias=AliasChoices('input', 'text'), min_length=1, max_length=3000)
+    model_config = ConfigDict(extra='forbid')
+    input: str = Field(validation_alias=AliasChoices('input', 'text'), min_length=1, max_length=4096)
+    model: str = 'chatterbox-multilingual-v3'
     language: str = 'en'
-    voice: str | None = None
+    voice: str | dict[str, str] | None = None
     exaggeration: float = Field(default=0.5, ge=0, le=2)
     cfg_weight: float = Field(default=0.5, ge=0, le=1)
-    response_format: str = 'wav'
+    response_format: str = 'mp3'
+    speed: float = Field(default=1, ge=0.25, le=4, allow_inf_nan=False)
+    instructions: str | None = None
+    stream_format: str = 'audio'
+
+@api.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException):
+    if request.url.path.startswith('/v1/'):
+        return JSONResponse(status_code=400 if exc.status_code == 422 else exc.status_code,
+                            content={'error': {'message': str(exc.detail), 'type': 'invalid_request_error' if exc.status_code < 500 else 'server_error', 'param': None, 'code': None}})
+    return JSONResponse(status_code=exc.status_code, content={'detail': exc.detail})
+
+@api.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    if request.url.path.startswith('/v1/'):
+        first = errors[0]
+        return JSONResponse(status_code=400, content={'error': {'message': first['msg'], 'type': 'invalid_request_error', 'param': str(first['loc'][-1]), 'code': 'invalid_value'}})
+    from fastapi.exception_handlers import request_validation_exception_handler
+    return await request_validation_exception_handler(request, exc)
+
+MODEL_ID = 'chatterbox-multilingual-v3'
+
+@api.get('/v1/models')
+def models_list():
+    return {'object': 'list', 'data': [{'id': MODEL_ID, 'object': 'model', 'created': 0, 'owned_by': 'local'}]}
+
+@api.get('/v1/models/{model_id}')
+def models_get(model_id: str):
+    if model_id != MODEL_ID:
+        raise HTTPException(404, 'Unknown model')
+    return models_list()['data'][0]
 
 @api.get('/model/status')
 def model_status():
@@ -243,15 +279,45 @@ def voices_sample(voice_id: str):
         data = (VOICES / f'{voice_id}.wav').read_bytes()
     return Response(data, media_type='audio/wav', headers={'Content-Disposition': f'attachment; filename="{voice_id}.wav"'})
 
-@api.post('/v1/audio/speech', responses={200: {'content': {'audio/wav': {}}}})
-def speech(request: SpeechRequest):
-    if request.response_format != 'wav':
-        raise HTTPException(422, 'Only WAV output is supported')
-    sr, audio = synthesize(request.input, request.language, voice=request.voice,
+def speech_audio(request):
+    if request.model != MODEL_ID:
+        raise HTTPException(404, f'Unknown model. Use {MODEL_ID}; OpenAI hosted models are not available here')
+    if request.response_format not in FORMATS:
+        raise HTTPException(400, 'Supported formats: mp3, opus, aac, flac, wav, pcm')
+    if request.instructions:
+        raise HTTPException(400, 'Free-form instructions are not supported by Chatterbox; use exaggeration and cfg_weight')
+    if request.stream_format != 'audio':
+        raise HTTPException(400, 'Only stream_format=audio is supported; SSE generation is unavailable')
+    voice = request.voice
+    if isinstance(voice, dict):
+        if set(voice) != {'id'}:
+            raise HTTPException(400, 'Custom voice objects must contain only id')
+        voice = voice['id']
+    if voice == 'default':
+        voice = None
+    sr, audio = synthesize(request.input, request.language, voice=voice,
                            exaggeration=request.exaggeration, cfg_weight=request.cfg_weight)
-    buffer = io.BytesIO()
-    sf.write(buffer, audio, sr, format='WAV', subtype='PCM_16')
-    return Response(buffer.getvalue(), media_type='audio/wav', headers={'Content-Disposition': 'attachment; filename="speech.wav"'})
+    return sr, adjust_speed(audio, sr, request.speed)
+
+@api.post('/v1/audio/speech', response_class=Response)
+def speech(request: SpeechRequest):
+    sr, audio = speech_audio(request)
+    encoded, mime = encode_audio(audio, sr, request.response_format)
+    return Response(encoded, media_type=mime, headers={'Content-Disposition': f'attachment; filename="speech.{request.response_format}"'})
+
+@api.post('/v1/audio/speech/with-timestamps')
+def speech_timestamps(request: SpeechRequest):
+    check_alignment(request.language, ROOT)
+    sr, audio = speech_audio(request)
+    encoded, mime = encode_audio(audio, sr, request.response_format)
+    audio = decoded_audio(encoded, request.response_format, sr)
+    words = align_words(audio, sr, request.input, request.language, ROOT)
+    return {'audio_base64': base64.b64encode(encoded).decode('ascii'), 'content_type': mime,
+            'response_format': request.response_format, 'sample_rate': 48000 if request.response_format == 'opus' else sr, 'duration': round(len(audio) / sr, 4),
+            'text': request.input, 'words': words,
+            'alignment': {'method': 'ctc_forced_alignment', 'language': request.language,
+                          'warnings': ['Timings are model estimates, not guaranteed exact boundaries.'] +
+                                      (['Some words could not be aligned.'] if any(not w['aligned'] for w in words) else [])}}
 
 def ui_generate(text, language, reference, voice=''):
     try:

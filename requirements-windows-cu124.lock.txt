@@ -108,3 +108,5 @@ uvicorn==0.54.0
 virtualenv==21.14.13
 wrapt==2.5.1
 zipp==4.1.2
+num2words==0.5.14
+docopt==0.6.2

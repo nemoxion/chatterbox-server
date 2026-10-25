@@ -1,0 +1,79 @@
+[
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/config.json",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/config.json",
+    "size": 1596,
+    "sha256": "d3ec255c063d9f95057b553b19c20135b259875834a4fe9deb218a6be25b4cf3"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/model.safetensors",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/model.safetensors",
+    "size": 377607901,
+    "sha256": "8aa76ab2243c81747a1f832954586bc566090c83a0ac167df6f31f0fa917d74a"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/preprocessor_config.json",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/preprocessor_config.json",
+    "size": 159,
+    "sha256": "b225d617c025463b9e157e06afea8b90dc7078fc70b013c533328423e0486b4a"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/special_tokens_map.json",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/special_tokens_map.json",
+    "size": 85,
+    "sha256": "bb7068de1150661a10b55f9e4b12a0e77af8bf91f5e45e1b58afaf1d0e17f675"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/tokenizer_config.json",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/tokenizer_config.json",
+    "size": 163,
+    "sha256": "dc790594f5bc351a4311c6624f40acd95850d4aaf2a5cb3c656c9b610720b608"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/en/vocab.json",
+    "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/22aad52d435eb6dbaf354bdad9b0da84ce7d6156/vocab.json",
+    "size": 291,
+    "sha256": "19727f8944fe6459fc3f240ae2c198395b740f6a029bd23e06656266b83bcf64"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/de/config.json",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german/resolve/4b8a02957378d0f2da2ef74091156b032c485a89/config.json",
+    "size": 1782,
+    "sha256": "42175a918795a7343c58dbcad995603912a0d85c729cc4d7b8eb089a7a569183"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/de/preprocessor_config.json",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german/resolve/4b8a02957378d0f2da2ef74091156b032c485a89/preprocessor_config.json",
+    "size": 262,
+    "sha256": "ca5999a45e98bb76ea87a461ba28a23ad32a5bb9f733b8e0f6546ff38b6c612d"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/de/pytorch_model.bin",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german/resolve/4b8a02957378d0f2da2ef74091156b032c485a89/pytorch_model.bin",
+    "size": 1262089623,
+    "sha256": "bff6d75ab89d8ca9cd103df9beb9c10f547501cf5a34aeabea1c8d736c1b81cb"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/de/special_tokens_map.json",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german/resolve/4b8a02957378d0f2da2ef74091156b032c485a89/special_tokens_map.json",
+    "size": 85,
+    "sha256": "bb7068de1150661a10b55f9e4b12a0e77af8bf91f5e45e1b58afaf1d0e17f675"
+  },
+  {
+    "group": "alignment",
+    "path": "data/alignment/de/vocab.json",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-german/resolve/4b8a02957378d0f2da2ef74091156b032c485a89/vocab.json",
+    "size": 350,
+    "sha256": "31d0914432f4492a24ce83abfd767421844afe5cef20346a48c6c877dee28378"
+  }
+]

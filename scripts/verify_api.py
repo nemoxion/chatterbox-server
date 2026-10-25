@@ -14,13 +14,13 @@ def verify(base):
 
     for path in ['/', '/docs', '/openapi.json', '/model/status']:
         call('GET', path)
-    call('POST', '/v1/audio/speech', expected=422, json={'input': '   '})
+    call('POST', '/v1/audio/speech', expected=400, json={'input': '   '})
     call('POST', '/v1/audio/speech', expected=404, json={'input': 'Hello', 'voice': 'missing'})
     call('POST', '/voices', expected=422, data={'name': 'Invalid'}, files={'sample': ('bad.wav', b'bad')})
     loaded = call('POST', '/model/load').json()
     assert loaded['loaded']
     assert call('POST', '/model/load').json()['loaded']
-    speech = call('POST', '/v1/audio/speech', json={'input': 'Hello. This is a local REST interface test.'})
+    speech = call('POST', '/v1/audio/speech', json={'input': 'Hello. This is a local REST interface test.', 'response_format': 'wav'})
     audio, sr = sf.read(io.BytesIO(speech.content))
     assert len(audio) > sr and np.isfinite(audio).all() and np.max(np.abs(audio)) > 0.001
     temporary = call('POST', '/voices', expected=201, data={'name': 'Temporary deletion check'},
@@ -42,7 +42,7 @@ def verify(base):
     assert call('GET', f'/voices/{voice_id}').json()['id'] == voice_id
     assert any(v['id'] == voice_id for v in call('GET', '/voices').json()['voices'])
     sf.read(io.BytesIO(call('GET', f'/voices/{voice_id}/sample').content))
-    cloned = call('POST', '/v1/audio/speech', json={'text': 'Stored voice selection works.', 'voice': voice_id})
+    cloned = call('POST', '/v1/audio/speech', json={'text': 'Stored voice selection works.', 'voice': voice_id, 'response_format': 'wav'})
     audio, sr = sf.read(io.BytesIO(cloned.content))
     assert len(audio) > sr and np.isfinite(audio).all()
     unloaded = call('POST', '/model/unload').json()

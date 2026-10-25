@@ -36,7 +36,9 @@ OpenAPI: http://127.0.0.1:7860/openapi.json
 | POST | `/model/load` | Load Multilingual V3 onto the GPU |
 | POST | `/model/unload` | Release model weights and audio caches |
 | GET / PUT | `/model/settings` | Read/save `idle_timeout_seconds` (default 7200; 0 disables; maximum 30 days) |
-| POST | `/v1/audio/speech` | Generate WAV audio from JSON |
+| POST | `/v1/audio/speech` | Generate binary audio (MP3 by default) |
+| POST | `/v1/audio/speech/with-timestamps` | Audio plus forced-aligned word timestamps |
+| GET | `/v1/models` | OpenAI-style model discovery |
 | POST | `/voices` | Upload multipart fields `name` and `sample` |
 | GET | `/voices` | List persistent voice IDs and metadata |
 | GET | `/voices/{id}` | Retrieve a voice's metadata |
@@ -45,7 +47,7 @@ OpenAPI: http://127.0.0.1:7860/openapi.json
 
 Speech automatically loads the model when needed. Load, unload, and generation operations share a lock, so unloading waits for active generation. The model automatically unloads after two hours of inactivity by default. Configure `/model/settings`, the tray timeout presets, or Model memory in the web interface; zero disables automatic unloading. Settings persist in ignored `data/settings.json`. The timer resets after generation finishes or an explicit load request, and status polling does not reset it. Active generation is never interrupted. A small CUDA runtime allocation/context can remain after unloading; approximately 8 MB of PyTorch allocations remained in testing. Metrics report PyTorch allocations rather than all process VRAM.
 
-Speech JSON accepts `input` (alias `text`, 1–3000 characters), `language` (default `en`), `voice` (optional stored ID), `exaggeration` (0–2, default 0.5), `cfg_weight` (0–1, default 0.5), and `response_format` (`wav` only). This is a local speech endpoint, not a complete implementation of the OpenAI API.
+Speech requests follow OpenAI's speech API shape, with model discovery, saved voice objects, speed 0.25–4, and MP3/WAV/FLAC/Opus/AAC/PCM output. The default is now MP3; specify `response_format: "wav"` for existing WAV clients. An optional `/v1/audio/speech/with-timestamps` endpoint returns encoded audio and measured word timings (English/German). See [docs/speech-api.md](docs/speech-api.md) for the compatibility contract, examples, alignment setup, and limitations.
 
 Voice samples must contain 1–120 seconds of usable audio, at most 25 MB. WAV and FLAC are recommended. Samples are stored as mono PCM WAV with JSON metadata. Names are labels; use the returned ID for generation. Recordings persist across restarts. In the browser, a selected stored voice takes priority over an uploaded reference. Click Refresh stored voices after adding samples through REST.
 
@@ -61,7 +63,7 @@ voice_id = response.json()['id']
 
 print(requests.get(base + '/voices', timeout=30).json())
 response = requests.post(base + '/v1/audio/speech', json={
-    'input': 'Hello from my saved voice.', 'language': 'en', 'voice': voice_id,
+    'input': 'Hello from my saved voice.', 'language': 'en', 'voice': voice_id, 'response_format': 'wav',
 }, timeout=180)
 response.raise_for_status()
 with open('speech.wav', 'wb') as output:
